@@ -19,6 +19,14 @@ setwd("E:\\NON_PROJECT\\TEACHING\\CORNWALL\\UG_PROJECTS\\2014-15\\JACK_HARNESS\\
 
 dat <- read.csv("regan_dataset_analyse2_transformed.csv")
 
+### Use 'woody' or not rather than all three growth forms. 
+## There are only 9 shrubs, so little point coding them distinctly. 
+## Having a binary variable makes it easier to examine interactions in SEM. 
+## See powerpoint for previous analyses with shrub and tree.
+## Results not meaningfully changed by replacing three growth forms with two.
+dat$woody <- 0
+dat$woody[dat$growth %in% c("Shrub","Tree")] <- 1
+
 ##### Submodel 1 #####
 plot(yr1 ~ rsEURm2_t, data=dat)
 
@@ -83,12 +91,19 @@ plot(density_europe_t ~ citations_t, data=dat)
 plot(density_europe_t ~ growth, data=dat)
 
 ### Linear model
-summary(m3 <- lm(density_europe_t ~ rsEURm2_t + citations_t + growth, data=dat))
+summary(m3 <- lm(density_europe_t ~ rsEURm2_t + citations_t + woody, data=dat))
 autoplot(m3, label.size = 1) ## Seems fine
 
 ## Quadratic model
-## Using q and I(q^2) is problematic beecause they will be correlated and correlated variables can cause problems. The use of poly() avoids this by producing orthogonal polynomials
-summary(m3q <- lm(density_europe_t ~ poly(rsEURm2_t, 2) + poly(citations_t, 2) + growth, data=dat, na.action=na.fail)) ## all relationships significant. 
+## Using q and I(q^2) is problematic because they will be correlated and correlated variables can cause problems. 
+## The use of poly() avoids this by producing orthogonal polynomials
+## However, in order to test for interactions between linear effects and to dredge, have to create new variables for first and second order polynomial
+dat$rsEURm2_t1 <- poly(dat$rsEURm2_t, 2)[,1]
+dat$rsEURm2_t2 <- poly(dat$rsEURm2_t, 2)[,2]
+dat$citations_t1 <- poly(dat$citations_t, 2)[,1]
+dat$citations_t2 <- poly(dat$citations_t, 2)[,2]
+
+summary(m3q <- lm(density_europe_t ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody, data=dat, na.action=na.fail)) ## all relationships significant. 
 autoplot(m3q, label.size = 1) ## Seems fine
 summ(m3q) 
 
@@ -96,26 +111,39 @@ summ(m3q)
 summary(m3s <- step(m3q)) ## Selects model with both linear and quadratic terms + intercept
 
 ## Check for interactions
-summary(m3i <- lm(density_europe_t ~ poly(rsEURm2_t, 2) + poly(citations_t, 2) + growth +
-                    rsEURm2_t*citations_t + rsEURm2_t*growth + citations_t*growth,
+summary(m3i <- lm(density_europe_t ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody +
+                    rsEURm2_t1*citations_t1 + rsEURm2_t1*woody + citations_t1*woody,
                   data=dat, na.action=na.fail)) ## na.action is for if dredge is needed.
-summary(m3is <- step(m3i)) ## selects model with all linear and quadratic effects and without interactions
+summary(m3is <- step(m3i)) ## selects model with all linear and quadratic effects and with interaction between woody and citations_t1, EUR range size and citations, and EUR range size and woody (when all three growth forms were used, no interactions were selected)
+autoplot(m3is, label.size = 1) ## Seems fine
+summ(m3is) 
 
 ## Plot best fitting model
 ## all non-plotted variables are centered by default, i.e. relationship plotted given mean values of other explanatory variables
-effect_plot(m3q, pred=rsEURm2_t, interval=T, plot.points=T, data=dat, main.title="Observed data")
-effect_plot(m3q, pred=rsEURm2_t, interval=T, plot.points=T, partial.residuals=T, data=dat, main.title="Partial residuals")
+effect_plot(m3is, pred=rsEURm2_t1, interval=T, plot.points=T, data=dat, main.title="Observed data")
+effect_plot(m3is, pred=rsEURm2_t1, interval=T, plot.points=T, partial.residuals=T, data=dat, main.title="Partial residuals")
 
-effect_plot(m3q, pred=citations_t, interval=T, plot.points=T, data=dat, main.title="Observed data") 
-effect_plot(m3q, pred=citations_t, interval=T, plot.points=T, partial.residuals=T, data=dat, main.title="Partial residuals")
+effect_plot(m3is, pred=citations_t1, interval=T, plot.points=T, data=dat, main.title="Observed data") 
+effect_plot(m3is, pred=citations_t1, interval=T, plot.points=T, partial.residuals=T, data=dat, main.title="Partial residuals")
 
-effect_plot(m3q, pred=growth, interval=T, plot.points=T, data=dat, main.title="Observed data")
-effect_plot(m3q, pred=growth, interval=T, plot.points=T, partial.residuals=T, data=dat, main.title="Partial residuals")
+effect_plot(m3is, pred=woody, interval=T, plot.points=T, data=dat, main.title="Observed data")
+effect_plot(m3is, pred=woody, interval=T, plot.points=T, partial.residuals=T, data=dat, main.title="Partial residuals")
 
 ## Variance Inflation Factor
-vif(m3q) ## all less than 5: OK
+vif(m3is) ## all less than 5: OK
+
+## Check final model no different when use first order polynomial as response
+dat$density_europe_t1 <- poly(dat$density_europe_t, 2)[,1]
+dat$density_europe_t2 <- poly(dat$density_europe_t, 2)[,2]
+
+summary(m3i.v2 <- lm(density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody +
+                    rsEURm2_t1*citations_t1 + rsEURm2_t1*woody + citations_t1*woody, data=dat))
+
+plot(summary(m3i)$coefficients[,"Estimate"], summary(m3i.v2)$coefficients[,"Estimate"]) ## Effect sizes remain the same (apart from intercept, which is different at the numerical value of the response variable differs)
 
 ##### Submodel 3 - NOT area corrected #####
+### This is from when growth form was coded as three variables - now obsolete. 
+### Did not repeat with growth coded as 'woody' as decided not to use area correction
 par(mfrow=c(2,2))
 par(mar=c(4, 4, 1, 1)) # c(bottom, left, top, right)
 plot(fungi_eur ~ rsEURm2, data=dat)
@@ -160,24 +188,34 @@ plot(en_rel_t ~ rsUSAm2, data=dat)
 plot(en_rel_t ~ yr1, data=dat)
 plot(en_rel_t ~ density_europe_t, data=dat)
 plot(en_rel_t ~ citations_t, data=dat)
-plot(en_rel_t ~ growth, data=dat)
+plot(en_rel_t ~ woody, data=dat)
 
 ### Linear model
-summary(m4 <- lm(en_rel_t ~ rsUSAm2_t + yr1 + density_europe_t + citations_t + growth, data=dat))
+summary(m4 <- lm(en_rel_t ~ rsUSAm2_t + yr1 + density_europe_t + citations_t + woody, data=dat))
 autoplot(m4, label.size = 1) ## Seems to have broader variance at mid-levels of enemy release than at high or low ends - caused by a few rogue values in the centre of the distribution of the response variable. Leverage graph is flatlined, so none of these values seem to have undue influence.
 
 ### Quadratic model
-summary(m4q <- lm(en_rel_t ~ poly(rsUSAm2_t, 2) + poly(yr1, 2) +
-                    poly(density_europe_t, 2) + poly(citations_t, 2) + growth,
-                  data=dat, na.action=na.fail)) ## yr1 not significant. GrowthTree only just significant.
+## Using q and I(q^2) is problematic because they will be correlated and correlated variables can cause problems. 
+## The use of poly() avoids this by producing orthogonal polynomials
+## However, in order to test for interactions between linear effects and to dredge, have to create new variables for first and second order polynomial
+dat$rsUSAm2_t1 <- poly(dat$rsUSAm2_t, 2)[,1]
+dat$rsUSAm2_t2 <- poly(dat$rsUSAm2_t, 2)[,2]
+dat$yr1_1 <- poly(dat$yr1, 2)[,1]
+dat$yr1_2 <- poly(dat$yr1, 2)[,2]
+
+summary(m4q <- lm(en_rel_t ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 +
+                    density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody,
+                  data=dat, na.action=na.fail)) ## yr1 not significant. Woody significant (GrowthTree was only just significant previously)
 autoplot(m4q, label.size = 1) ## Seems ok
 summ(m4q) 
 
 ### Stepwise model
 summary(m4s <- step(m4q)) ## Selects model with all linear and quadratic terms + intercept
-dredge(m4q)
+summ(m4s)
+dredge(m4q) ## Best model that respects marginality contains all linear and quadratic terms 
 
-## Check final model for whether quadratic terms and contentious main effect terms are required:
+### Check final model for whether quadratic terms and contentious main effect terms are required:
+## Note this investigation was done with three growth forms. Did not repeat as used the model identified by step.
 ## yr1 and growth could both be discarded and dAIC remaining < 2
 AIC(m4q) # -1856.189
 summary(m4q.1 <- lm(en_rel_t ~ poly(rsUSAm2_t, 2) + yr1 +
@@ -219,38 +257,22 @@ effect_plot(m4q.6, pred=density_europe_t, interval=T, plot.points=T, partial.res
 effect_plot(m4q.6, pred=citations_t, interval=T, plot.points=T, partial.residuals=F, data=dat, main.title="Observed data")
 effect_plot(m4q.6, pred=citations_t, interval=T, plot.points=T, partial.residuals=T, data=dat, main.title="Partial residuals")
 
-## Check for interactions. Use old system of defining quadratics as not meaningful to compare interactions between quadratic forms and three-way interactions
-summary(m4i <- lm(en_rel_t ~ rsUSAm2_t + yr1 + density_europe_t + citations_t + growth +
-                    I(rsUSAm2_t^2) + I(yr1^2) + I(density_europe_t^2) + I(citations_t^2) +
-                    rsUSAm2_t*yr1 + rsUSAm2_t*density_europe_t + rsUSAm2_t*citations_t + rsUSAm2_t*growth +
-                    density_europe_t*yr1 + density_europe_t*citations_t + density_europe_t*growth +
-                    citations_t*yr1 + citations_t*growth +
-                    yr1*growth,                                                                   , 
+## Check for interactions. 
+summary(m4q <- lm(en_rel_t ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 +
+                    density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody,
+                  data=dat, na.action=na.fail)) ## yr1 not significant. Woody significant (GrowthTree was only just significant previously)
+
+
+summary(m4i <- lm(en_rel_t ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 +
+                    density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +
+                    rsUSAm2_t1*yr1_1 + rsUSAm2_t1*density_europe_t1 + rsUSAm2_t1*citations_t1 + rsUSAm2_t1*woody +
+                    density_europe_t1*yr1_1 + density_europe_t1*citations_t1 + density_europe_t1*woody +
+                    citations_t1*yr1_1 + citations_t1*woody +
+                    yr1_1*woody,                                                                   , 
                   data=dat, na.action=na.fail)) ## na.action is for if dredge is needed. density_europe (linear and curved), USA range-size (curved) only variables significant at 0.05
-summary(m4is <- step(m4i)) ## selects model without quadratic effect of yr1, and with interaction between rsUSA and density_europe, and between yr1*citations.
-dredge(m4i) ## best model that respects marginality INCLUDES quadratic effect of yr1, and with interaction between rsUSA and density_europe, and between yr1*citations. dAIC=0.58
-
-## Make selected polynomials orthogonal and check whether yr1 should be quadratic or not
-summary(m4is.1 <- lm(en_rel_t ~ poly(rsUSAm2_t, 2) + yr1 +
-                    poly(density_europe_t, 2) + poly(citations_t, 2) + growth +
-                     rsUSAm2_t*density_europe_t + yr1*citations_t,
-                  data=dat, na.action=na.fail))
-AIC(m4is.1) # -1861.154
-
-summary(m4is.2 <- lm(en_rel_t ~ poly(rsUSAm2_t, 2) + poly(yr1, 2) +
-                     poly(density_europe_t, 2) + poly(citations_t, 2) + growth +
-                     rsUSAm2_t*density_europe_t + yr1*citations_t,
-                   data=dat, na.action=na.fail))
-AIC(m4is.2) # -1862.8 ## The best model - make yr1 quadratic
-
-summ(m4is.2)
-autoplot(m4is.2, label.size = 1) ## Seems ok
+summary(m4is <- step(m4i)) ## selects model without quadratic effect of yr1, and with interaction between rsUSA and density_europe, and between yr1 and woody (when growth coded as three forms, yr1*citations was selected and no interaction between growth form and any other variable)
+m4i.d <- dredge(m4i) ## best model that respects marginality excludes quadratic effect of yr1, and with interaction between rsUSA and density_europe, and between yr1 and woody (when growth coded as three forms, yr1*citations was selected and no interaction between growth form and any other variable)
+m4i.db <- get.models(m4i.d, subset=1)$'270592'
+summ(m4i.db)
+autoplot(m4i.db)
 vif(m4q) ## all fine. VIF won't work when applied to model with interactions but that's fine.
-
-## Would removing yr1 and growth be appropriate?
-summary(m4is.3 <- lm(en_rel_t ~ poly(rsUSAm2_t, 2) + 
-                       poly(density_europe_t, 2) + poly(citations_t, 2) + 
-                       rsUSAm2_t*density_europe_t,
-                     data=dat, na.action=na.fail))
-AIC(m4is.3) # -1858.166. Nope, compared to model with growth and yr1, dAIC >2
-

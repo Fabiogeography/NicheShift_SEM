@@ -15,7 +15,7 @@ library(ggfortify) ## nice diagnostic plots
 library(betareg)
 library(car) ## logit transformation
 
-setwd("E:\\NON_PROJECT\\TEACHING\\CORNWALL\\UG_PROJECTS\\2014-15\\JACK_HARNESS\\PATH_ANALYSIS\\2021")
+setwd("E:\\NON_PROJECT\\TEACHING\\CORNWALL\\UG_PROJECTS\\2014-15\\JACK_HARNESS\\PATH_ANALYSIS\\2022")
 
 dat <- read.csv("regan_dataset_analyse2_transformed.csv")
 
@@ -36,6 +36,8 @@ dat$citations_t2 <- poly(dat$citations_t, 2)[,2]
 dat$en_rel_t1 <- poly(dat$en_rel_t, 2)[,1]
 dat$en_rel_t2 <- poly(dat$en_rel_t, 2)[,2]
 dat$expansion_tl <- logit(dat$expansion_t)
+dat$woody <- 0
+dat$woody[dat$growth %in% c("Shrub","Tree")] <- 1
 
 ##### Calculate submodels. #####
 ## Note that responses and explanatory variables needs to be the same throughout, i.e. the linear terms of the polynomial calculation
@@ -47,20 +49,44 @@ m1 <- lm(yr1_1 ~ rsEURm2_t1, data=dat) ## Needs to be the same explanatory varia
 m2q <- lm(rsUSAm2_t1 ~ rsEURm2_t1 + rsEURm2_t2, dat) 
 
 ### Submodel 3. 
-m3q <- lm(density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + growth, dat)
+m3i.v2 <- lm(density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1*citations_t1 + rsEURm2_t1*woody + citations_t1*woody, data=dat)
 
 ### Submodel 4. 
-m4is.2 <- lm(en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + 
-                       density_europe_t1 + density_europe_t2 + 
-                       citations_t1 + citations_t2 + growth +
-                        rsUSAm2_t1*density_europe_t1 + yr1_1*citations_t1, dat)
+m4i.db <- lm(en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +
+               rsUSAm2_t1*density_europe_t1 + yr1_1*woody, 
+             data=dat)
 
 ### Submodel 5. logit-transformed lm. Best of best model subset
-m5i.poly <- lm(expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + growth, dat, na.action=na.fail) ##  + growth*rsEURm2_t1 # can't include in pSEM. Investigate.
+m5i.poly <- lm(expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + woody + woody*rsEURm2_t1, dat)
 
 ##### Construct and investigate the SEM #####
-p1 <- psem(m1, m2q, m3q, m4is.2, m5i.poly) ## 
+p1 <- psem(m1, m2q, m3i.v2, m4i.db, m5i.poly) ## 
 summary(p1, .progressBar = F) ## Fisher's C-test: if result is **non-significant** at 5% you aren't missing any relationships.
 
+## Update submodel 2 with possible missing relationships
+summary(m2qu <- lm(rsUSAm2_t1 ~ rsEURm2_t1 + rsEURm2_t2+ yr1_1 + woody, data=dat))
+
+## Update submodel 5 with possible missing relationships
+## Add curved and linear effects of density as wouldn't normally just add cured effect
+summary(m5i.polyu <- lm(expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + density_europe_t2 + woody + woody*rsEURm2_t1, data=dat))
+
+## New psem
+p2 <- psem(m1, m2qu, m3i.v2, m4i.db, m5i.polyu, citations_t2%~~%expansion_tl, citations_t1%~~%yr1_1) 
+summary(p2, .progressBar = F) ## Fisher's C-test: only density_europe_t1%~~%density_europe_t2 covariance remains. Confusing.
+
+### See if coding relationship between naturalised range size and enemy release as covariance affects the model
+## Update m4 to allow relationship between naturalised range size and enemy release to be coded as covariance
+m4i.db.cov <- lm(en_rel_t1 ~ yr1_1 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody, 
+             data=dat)
+
+p3 <- psem(m1, m2qu, m3i.v2, m4i.db.cov, m5i.polyu,
+               citations_t2%~~%expansion_tl, citations_t1%~~%yr1_1, en_rel_t1%~~%rsUSAm2_t1, en_rel_t1%~~%rsUSAm2_t2)
+summary(p3, .progressBar = F)
+
 ## Extract the relationships
-coefs(p1, standardize = "scale") ## The most typical implementation of standardization is placing the coefficients in units of standard deviations of the mean.
+## The most typical implementation of standardization is placing the coefficients in units of standard deviations of the mean.
+coefs(p1, standardize = "scale") 
+coefs(p2, standardize = "scale") ## The final piecewiseSEM
+coefs(p3, standardize = "scale") ## Although coding two relationships as covariance changes that model slightly (notably effect size of woody), the expansion model doesn't change.
+
+write.csv(coefs(p2, standardize = "scale"), file="piecewiseParams_nonPhylo.csv", row.names=F)
