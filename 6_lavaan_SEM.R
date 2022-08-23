@@ -42,6 +42,14 @@ dat$expansion_tl <- logit(dat$expansion_t)
 dat$woody <- 0
 dat$woody[dat$growth %in% c("Shrub","Tree")] <- 1
 
+# ## Interactions
+# dat$rsEURm2_t1Xcitations_t1 <- dat$rsEURm2_t1*dat$citations_t1
+# dat$rsEURm2_t1Xwoody <- dat$rsEURm2_t1*dat$woody
+# dat$citations_t1Xwoody <- dat$citations_t1*dat$woody
+# dat$rsUSAm2_t1Xdensity_europe_t1 <- dat$rsUSAm2_t1*dat$density_europe_t1
+# dat$yr1_1Xwoody <- dat$yr1_1*dat$woody
+# dat$woodyXrsEURm2_t1 <- dat$woody*dat$rsEURm2_t1
+
 ##### Test for multivariate normality ##### 
 mardiaSkew(dat[,56:68]) ## not normal
 mardiaKurtosis(dat[,56:68]) ## not normal
@@ -51,21 +59,36 @@ mardiaKurtosis(dat[,56:68]) ## not normal
 ## These regression formulas are similar to the way ordinary linear regression formulas are used
 ## in R, but they may include latent variables. Interaction terms are currently not supported.
 ## Include correlated errors (~~)
-submodels <- '
+## Note interactions must be coded with : (not)
+submodels.i <- '
 yr1_1 ~ rsEURm2_t1
 rsUSAm2_t1 ~ rsEURm2_t1 + rsEURm2_t2 + yr1_1 + woody
-density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1*citations_t1 + rsEURm2_t1*woody + citations_t1*woody
-en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1*density_europe_t1 + yr1_1*woody
-expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + density_europe_t2 + woody + woody*rsEURm2_t1
+density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1:citations_t1 + citations_t1:woody
+en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1:density_europe_t1 + yr1_1:woody
+expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + density_europe_t2 + woody + woody:rsEURm2_t1
 citations_t2~~expansion_tl
 citations_t1~~yr1_1
 '
+submodels.ii <- '
+yr1_1 ~ rsEURm2_t1
+rsUSAm2_t1 ~ rsEURm2_t1 + rsEURm2_t2 + yr1_1 + woody
+density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1:citations_t1 + rsEURm2_t1:woody + citations_t1:woody
+en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1:density_europe_t1 + yr1_1:woody
+expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + density_europe_t2 + woody 
+citations_t2~~expansion_tl
+citations_t1~~yr1_1
+'
+ ## Does not converge if submodels 3 and 5 both contain woody:rsEURm2_t1
 
 ## Note this structure dictates the covariance of citations_t1+t2, which requires them to be random effects.
 ## Because they are exogenous (nothing affects them) lavaan by default wants their covariance to be fixed to the sample vales (i.e. be fixed effects)
 ## Setting fixed.x=F within sem sets all exogenous variables to be random and prevents an error message, while seemingly not changing the model output. 
 ## See ?lavOptions ", fixed.x=F"
-summary(sem1 <- sem(submodels, dat), standardized=T, rsq=T, fit.measures=T) 
+summary(sem1.i <- sem(submodels.i, dat), standardized=T, rsq=T, fit.measures=T) 
+summary(sem1.ii <- sem(submodels.ii, dat), standardized=T, rsq=T, fit.measures=T) 
+anova(sem1.i, sem1.ii) ## sem1.i fits significantly better
+sem1 <- sem1.i ## remove interaction from submodel 3
+submodels <- submodels.i
 
 ## The first column (Estimate) contains the (estimated or fixed) parameter value for each model parameter;
 ## the second column (Std.err) contains the standard error for each estimated parameter;
@@ -93,19 +116,19 @@ lavaanPlot(model=sem1, coefs=T, stand=T) ## standardized coefficients
 
 ##### Try to improve fit of sem #####
 ### Investigate magnitude of deviation between the relationships in the data and those implied by the model.
-round(inspect(sem1, "sample")$cov[1:7, 1:7], 4)
-round(fitted(sem1)$cov[1:7, 1:7], 4)
+round(inspect(sem1, "sample")$cov[1:9, 1:9], 4)
+round(fitted(sem1)$cov[1:9, 1:9], 4)
 
-round(inspect(sem1, "sample")$cov[8:13, 8:13], 4)
-round(fitted(sem1)$cov[8:13, 8:13], 4)
+round(inspect(sem1, "sample")$cov[10:18, 10:18], 4)
+round(fitted(sem1)$cov[10:18, 10:18], 4)
 
-### Include woody : citation covariances
+### Include woody ~~ citation covariances
 submodels2 <- '
 yr1_1 ~ rsEURm2_t1
 rsUSAm2_t1 ~ rsEURm2_t1 + rsEURm2_t2 + yr1_1 + woody
-density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1*citations_t1 + rsEURm2_t1*woody + citations_t1*woody
-en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1*density_europe_t1 + yr1_1*woody
-expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + density_europe_t2 + woody + woody*rsEURm2_t1
+density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1:citations_t1 + citations_t1:woody
+en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1:density_europe_t1 + yr1_1:woody
+expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + density_europe_t2 + woody + woody:rsEURm2_t1
 citations_t2~~expansion_tl
 citations_t1~~yr1_1
 citations_t1~~woody
@@ -113,16 +136,16 @@ citations_t2~~woody
 '
 summary(sem2 <- sem(submodels2, dat), standardized=T, rsq=T, fit.measures=T) 
 
-round(inspect(sem2, "sample")$cov[8:13, 8:13], 4)
-round(fitted(sem2)$cov[8:13, 8:13], 4) ## fitted and observed now match for citations_t1 and citation_t2
+round(inspect(sem2, "sample")$cov[10:18, 10:18], 4)
+round(fitted(sem2)$cov[10:18, 10:18], 4)## fitted and observed now match for citations_t1 and citation_t2
 
 ### Include causal relationship of yr1 on expansion as well
 submodels3 <- '
 yr1_1 ~ rsEURm2_t1
 rsUSAm2_t1 ~ rsEURm2_t1 + rsEURm2_t2 + yr1_1 + woody
-density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1*citations_t1 + rsEURm2_t1*woody + citations_t1*woody
-en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1*density_europe_t1 + yr1_1*woody
-expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + density_europe_t2 + woody + yr1_1 + woody*rsEURm2_t1
+density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1:citations_t1 + citations_t1:woody
+en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1:density_europe_t1 + yr1_1:woody
+expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + density_europe_t2 + woody + yr1_1 + woody:rsEURm2_t1
 citations_t2~~expansion_tl
 citations_t1~~yr1_1
 citations_t1~~woody
@@ -130,15 +153,14 @@ citations_t2~~woody
 '
 summary(sem3 <- sem(submodels3, dat), standardized=T, rsq=T, fit.measures=T) 
 
-round(inspect(sem3, "sample")$cov[1:7, 1:7], 4)
-round(fitted(sem3)$cov[1:7, 1:7], 4) ## fitted and observed now match for expansion~yr1, but effect of yr1_1 is not significant
+round(inspect(sem3, "sample")$cov[1:9, 1:9], 4)
+round(fitted(sem3)$cov[1:9, 1:9], 4) ## fitted and observed now closer for expansion~yr1, but effect of yr1_1 is not significant
 
 ### Compare three alternative models
 anova(sem1, sem2, sem3) 
 
-## LRtest reveals no difference between the models, and AIC supports sem1 as the best model so the simpler model (sem1) is better. 
+## LRtest reveals sig between the models 1 and 2, and AIC supports sem1 as the best model so the simpler model (sem1) is better. 
 AIC(sem1); AIC(sem2); AIC(sem3)
-## The AIC values support sem1 as well
 ## However, neither model appears to be correctly specified (Chi-square value)
 ## Causal relationship of yr1_ on expansion_tl, and covariance between citations and growth NOT supported
 
@@ -169,7 +191,7 @@ summary(sem3.2 <- sem(submodels3, dat, test="bollen.stine", se="boot", bootstrap
 ### Remove submodel 1
 submodels1.updates1 <- '
 rsUSAm2_t1 ~ rsEURm2_t1 + rsEURm2_t2 + yr1_1 + woody
-density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1*citations_t1 + rsEURm2_t1*woody + citations_t1*woody
+density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1*citations_t1 + citations_t1*woody
 en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1*density_europe_t1 + yr1_1*woody
 expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + density_europe_t2 + woody + woody*rsEURm2_t1
 citations_t2~~expansion_tl
@@ -182,9 +204,9 @@ summary(sem1.updates1 <- sem(submodels1.updates1, dat, estimator="mlm"), standar
 submodels1.updates2a <- '
 yr1_1 ~ rsEURm2_t1
 rsUSAm2_t1 ~ rsEURm2_t1 + yr1_1 + woody
-density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1*citations_t1 + rsEURm2_t1*woody + citations_t1*woody
-en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1*density_europe_t1 + yr1_1*woody
-expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + density_europe_t2 + woody + woody*rsEURm2_t1
+density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1:citations_t1 + citations_t1:woody
+en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1:density_europe_t1 + yr1_1:woody
+expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + density_europe_t2 + woody + woody:rsEURm2_t1
 citations_t2~~expansion_tl
 citations_t1~~yr1_1
 '
@@ -194,9 +216,9 @@ summary(sem1.updates2a <- sem(submodels1.updates2a, dat, estimator="mlm"), stand
 submodels1.updates2b <- '
 yr1_1 ~ rsEURm2_t1
 rsUSAm2_t1 ~ rsEURm2_t1 + rsEURm2_t1 + woody
-density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1*citations_t1 + rsEURm2_t1*woody + citations_t1*woody
-en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1*density_europe_t1 + yr1_1*woody
-expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + density_europe_t2 + woody + woody*rsEURm2_t1
+density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1:citations_t1 + citations_t1:woody
+en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1:density_europe_t1 + yr1_1:woody
+expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + density_europe_t2 + woody + woody:rsEURm2_t1
 citations_t2~~expansion_tl
 citations_t1~~yr1_1
 '
@@ -206,9 +228,9 @@ summary(sem1.updates2b <- sem(submodels1.updates2b, dat, estimator="mlm"), stand
 submodels1.updates2c <- '
 yr1_1 ~ rsEURm2_t1
 rsUSAm2_t1 ~ rsEURm2_t1 + woody
-density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1*citations_t1 + rsEURm2_t1*woody + citations_t1*woody
-en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1*density_europe_t1 + yr1_1*woody
-expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + density_europe_t2 + woody + woody*rsEURm2_t1
+density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1:citations_t1 + citations_t1:woody
+en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1:density_europe_t1 + yr1_1:woody
+expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + density_europe_t2 + woody + woody:rsEURm2_t1
 citations_t2~~expansion_tl
 citations_t1~~yr1_1
 '
@@ -219,22 +241,34 @@ summary(sem1.updates2b <- sem(submodels1.updates2c, dat, estimator="mlm"), stand
 submodels1.updates3a <- '
 yr1_1 ~ rsEURm2_t1
 rsUSAm2_t1 ~ rsEURm2_t1 + rsEURm2_t2 + yr1_1 + woody
-density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + woody + rsEURm2_t1*citations_t1 + rsEURm2_t1*woody + citations_t1*woody
-en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1*density_europe_t1 + yr1_1*woody
-expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + density_europe_t2 + woody + woody*rsEURm2_t1
+density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + woody + rsEURm2_t1:citations_t1 + citations_t1:woody
+en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1:density_europe_t1 + yr1_1:woody
+expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + density_europe_t2 + woody + woody:rsEURm2_t1
 citations_t2~~expansion_tl
 citations_t1~~yr1_1
 '
 summary(sem1.updates3a <- sem(submodels1.updates3a, dat, estimator="mlm"), standardized=T, rsq=T) 
+
+## citations_t2
+submodels1.updates3b <- '
+yr1_1 ~ rsEURm2_t1
+rsUSAm2_t1 ~ rsEURm2_t1 + rsEURm2_t2 + yr1_1 + woody
+density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + woody + citations_t1:woody
+en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1:density_europe_t1 + yr1_1:woody
+expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + density_europe_t2 + woody + woody:rsEURm2_t1
+citations_t2~~expansion_tl
+citations_t1~~yr1_1
+'
+summary(sem1.updates3b <- sem(submodels1.updates3b, dat, estimator="mlm"), standardized=T, rsq=T) 
 
 ## Remove NS paths in submodel 4
 ## yr1_2
 submodels1.updates4a <- '
 yr1_1 ~ rsEURm2_t1
 rsUSAm2_t1 ~ rsEURm2_t1 + rsEURm2_t2 + yr1_1 + woody
-density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1*citations_t1 + rsEURm2_t1*woody + citations_t1*woody
-en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1*density_europe_t1 + yr1_1*woody
-expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + density_europe_t2 + woody + woody*rsEURm2_t1
+density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1:citations_t1 + citations_t1:woody
+en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1:density_europe_t1 + yr1_1:woody
+expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + density_europe_t2 + woody + woody:rsEURm2_t1
 citations_t2~~expansion_tl
 citations_t1~~yr1_1
 '
@@ -244,106 +278,106 @@ summary(sem1.updates4a <- sem(submodels1.updates4a, dat, estimator="mlm"), stand
 submodels1.updates4b <- '
 yr1_1 ~ rsEURm2_t1
 rsUSAm2_t1 ~ rsEURm2_t1 + rsEURm2_t2 + yr1_1 + woody
-density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1*citations_t1 + rsEURm2_t1*woody + citations_t1*woody
-en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1*density_europe_t1
-expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + density_europe_t2 + woody + woody*rsEURm2_t1
+density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1:citations_t1 + citations_t1:woody
+en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1:density_europe_t1
+expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + density_europe_t2 + woody + woody:rsEURm2_t1
 citations_t2~~expansion_tl
 citations_t1~~yr1_1
 '
 summary(sem1.updates4b <- sem(submodels1.updates4b, dat, estimator="mlm"), standardized=T, rsq=T) 
 
-## citations_t2
-submodels1.updates4c <- '
-yr1_1 ~ rsEURm2_t1
-rsUSAm2_t1 ~ rsEURm2_t1 + rsEURm2_t2 + yr1_1 + woody
-density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1*citations_t1 + rsEURm2_t1*woody + citations_t1*woody
-en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + woody +  rsUSAm2_t1*density_europe_t1 + yr1_1*woody
-expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + density_europe_t2 + woody + woody*rsEURm2_t1
-citations_t2~~expansion_tl
-citations_t1~~yr1_1
-'
-summary(sem1.updates4c <- sem(submodels1.updates4c, dat, estimator="mlm"), standardized=T, rsq=T) 
-
-## woody and interactions
-submodels1.updates4d <- '
-yr1_1 ~ rsEURm2_t1
-rsUSAm2_t1 ~ rsEURm2_t1 + rsEURm2_t2 + yr1_1 + woody
-density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1*citations_t1 + rsEURm2_t1*woody + citations_t1*woody
-en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + rsUSAm2_t1*density_europe_t1
-expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + density_europe_t2 + woody + woody*rsEURm2_t1
-citations_t2~~expansion_tl
-citations_t1~~yr1_1
-'
-summary(sem1.updates4d <- sem(submodels1.updates4d, dat, estimator="mlm"), standardized=T, rsq=T) 
+# ## citations_t2
+# submodels1.updates4c <- '
+# yr1_1 ~ rsEURm2_t1
+# rsUSAm2_t1 ~ rsEURm2_t1 + rsEURm2_t2 + yr1_1 + woody
+# density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1:citations_t1 + citations_t1:woody
+# en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + woody +  rsUSAm2_t1:density_europe_t1 + yr1_1:woody
+# expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + density_europe_t2 + woody + woody:rsEURm2_t1
+# citations_t2~~expansion_tl
+# citations_t1~~yr1_1
+# '
+# summary(sem1.updates4c <- sem(submodels1.updates4c, dat, estimator="mlm"), standardized=T, rsq=T) 
+# 
+# ## woody and interactions
+# submodels1.updates4d <- '
+# yr1_1 ~ rsEURm2_t1
+# rsUSAm2_t1 ~ rsEURm2_t1 + rsEURm2_t2 + yr1_1 + woody
+# density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1:citations_t1 + citations_t1:woody
+# en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + rsUSAm2_t1:density_europe_t1
+# expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + density_europe_t2 + woody + woody:rsEURm2_t1
+# citations_t2~~expansion_tl
+# citations_t1~~yr1_1
+# '
+# summary(sem1.updates4d <- sem(submodels1.updates4d, dat, estimator="mlm"), standardized=T, rsq=T) 
 
 ## all
 submodels1.updates4e <- '
 yr1_1 ~ rsEURm2_t1
 rsUSAm2_t1 ~ rsEURm2_t1 + rsEURm2_t2 + yr1_1 + woody
-density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1*citations_t1 + rsEURm2_t1*woody + citations_t1*woody
-en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + density_europe_t1 + density_europe_t2 + citations_t1 + rsUSAm2_t1*density_europe_t1
-expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + density_europe_t2 + woody + woody*rsEURm2_t1
+density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1:citations_t1 + citations_t1:woody
+en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + density_europe_t1 + density_europe_t2 + citations_t1 + rsUSAm2_t1:density_europe_t1
+expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + density_europe_t2 + woody + woody:rsEURm2_t1
 citations_t2~~expansion_tl
 citations_t1~~yr1_1
 '
 summary(sem1.updates4e <- sem(submodels1.updates4e, dat, estimator="mlm"), standardized=T, rsq=T) 
 
 ### Remove NS paths in submodel 5
-## rsEURm2_t2
-submodels1.updates5a <- '
-yr1_1 ~ rsEURm2_t1
-rsUSAm2_t1 ~ rsEURm2_t1 + rsEURm2_t2 + yr1_1 + woody
-density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1*citations_t1 + rsEURm2_t1*woody + citations_t1*woody
-en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1*density_europe_t1 + yr1_1*woody
-expansion_tl ~ rsEURm2_t1 + rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + density_europe_t2 + woody + woody*rsEURm2_t1
-citations_t2~~expansion_tl
-citations_t1~~yr1_1
-'
-summary(sem1.updates5a <- sem(submodels1.updates5a, dat, estimator="mlm"), standardized=T, rsq=T) 
+# ## rsEURm2_t2
+# submodels1.updates5a <- '
+# yr1_1 ~ rsEURm2_t1
+# rsUSAm2_t1 ~ rsEURm2_t1 + rsEURm2_t2 + yr1_1 + woody
+# density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1:citations_t1 + citations_t1:woody
+# en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1:density_europe_t1 + yr1_1:woody
+# expansion_tl ~ rsEURm2_t1 + rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + density_europe_t2 + woody + woody:rsEURm2_t1
+# citations_t2~~expansion_tl
+# citations_t1~~yr1_1
+# '
+# summary(sem1.updates5a <- sem(submodels1.updates5a, dat, estimator="mlm"), standardized=T, rsq=T) 
 
-## rsEURm2_t1 & rsEURm2_t2 & interaction
-submodels1.updates5b <- '
-yr1_1 ~ rsEURm2_t1
-rsUSAm2_t1 ~ rsEURm2_t1 + rsEURm2_t2 + yr1_1 + woody
-density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1*citations_t1 + rsEURm2_t1*woody + citations_t1*woody
-en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1*density_europe_t1 + yr1_1*woody
-expansion_tl ~ rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + density_europe_t2 + woody
-citations_t2~~expansion_tl
-citations_t1~~yr1_1
-'
-summary(sem1.updates5b <- sem(submodels1.updates5b, dat, estimator="mlm"), standardized=T, rsq=T) 
+# ## rsEURm2_t1 & rsEURm2_t2 & interaction
+# submodels1.updates5b <- '
+# yr1_1 ~ rsEURm2_t1
+# rsUSAm2_t1 ~ rsEURm2_t1 + rsEURm2_t2 + yr1_1 + woody
+# density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1:citations_t1 + citations_t1:woody
+# en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1:density_europe_t1 + yr1_1:woody
+# expansion_tl ~ rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + density_europe_t2 + woody
+# citations_t2~~expansion_tl
+# citations_t1~~yr1_1
+# '
+# summary(sem1.updates5b <- sem(submodels1.updates5b, dat, estimator="mlm"), standardized=T, rsq=T) 
 
 ## en_rel_t1
 submodels1.updates5c <- '
 yr1_1 ~ rsEURm2_t1
 rsUSAm2_t1 ~ rsEURm2_t1 + rsEURm2_t2 + yr1_1 + woody
-density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1*citations_t1 + rsEURm2_t1*woody + citations_t1*woody
-en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1*density_europe_t1 + yr1_1*woody
-expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + density_europe_t1 + density_europe_t2 + woody + woody*rsEURm2_t1
+density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1:citations_t1 + citations_t1:woody
+en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1:density_europe_t1 + yr1_1:woody
+expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + density_europe_t1 + density_europe_t2 + woody + woody:rsEURm2_t1
 citations_t2~~expansion_tl
 citations_t1~~yr1_1
 '
 summary(sem1.updates5c <- sem(submodels1.updates5c, dat, estimator="mlm"), standardized=T, rsq=T) 
 
-## density_europe_t2
-submodels1.updates5d <- '
-yr1_1 ~ rsEURm2_t1
-rsUSAm2_t1 ~ rsEURm2_t1 + rsEURm2_t2 + yr1_1 + woody
-density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1*citations_t1 + rsEURm2_t1*woody + citations_t1*woody
-en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1*density_europe_t1 + yr1_1*woody
-expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + woody + woody*rsEURm2_t1
-citations_t2~~expansion_tl
-citations_t1~~yr1_1
-'
-summary(sem1.updates5d <- sem(submodels1.updates5d, dat, estimator="mlm"), standardized=T, rsq=T) 
+# ## density_europe_t2
+# submodels1.updates5d <- '
+# yr1_1 ~ rsEURm2_t1
+# rsUSAm2_t1 ~ rsEURm2_t1 + rsEURm2_t2 + yr1_1 + woody
+# density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1:citations_t1 + citations_t1:woody
+# en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1:density_europe_t1 + yr1_1:woody
+# expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + woody + woody:rsEURm2_t1
+# citations_t2~~expansion_tl
+# citations_t1~~yr1_1
+# '
+# summary(sem1.updates5d <- sem(submodels1.updates5d, dat, estimator="mlm"), standardized=T, rsq=T) 
 
-## density_europe_t2 & density_europe_t2 
+## density_europe_t2 & density_europe_t1 
 submodels1.updates5e <- '
 yr1_1 ~ rsEURm2_t1
 rsUSAm2_t1 ~ rsEURm2_t1 + rsEURm2_t2 + yr1_1 + woody
-density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1*citations_t1 + rsEURm2_t1*woody + citations_t1*woody
-en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1*density_europe_t1 + yr1_1*woody
-expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + woody + woody*rsEURm2_t1
+density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1:citations_t1 + citations_t1:woody
+en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1:density_europe_t1 + yr1_1:woody
+expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + woody + woody:rsEURm2_t1
 citations_t2~~expansion_tl
 citations_t1~~yr1_1
 '
@@ -353,8 +387,8 @@ summary(sem1.updates5e <- sem(submodels1.updates5e, dat, estimator="mlm"), stand
 submodels1.updates5f <- '
 yr1_1 ~ rsEURm2_t1
 rsUSAm2_t1 ~ rsEURm2_t1 + rsEURm2_t2 + yr1_1 + woody
-density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1*citations_t1 + rsEURm2_t1*woody + citations_t1*woody
-en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1*density_europe_t1 + yr1_1*woody
+density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1:citations_t1 + citations_t1:woody
+en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1:density_europe_t1 + yr1_1:woody
 expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + density_europe_t1 + density_europe_t2
 citations_t2~~expansion_tl
 citations_t1~~yr1_1
@@ -365,9 +399,9 @@ summary(sem1.updates5f <- sem(submodels1.updates5f, dat, estimator="mlm"), stand
 submodels1.updates5g <- '
 yr1_1 ~ rsEURm2_t1
 rsUSAm2_t1 ~ rsEURm2_t1 + rsEURm2_t2 + yr1_1 + woody
-density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1*citations_t1 + rsEURm2_t1*woody + citations_t1*woody
-en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1*density_europe_t1 + yr1_1*woody
-expansion_tl ~ rsUSAm2_t1
+density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1:citations_t1 + citations_t1:woody
+en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1:density_europe_t1 + yr1_1:woody
+expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1
 citations_t2~~expansion_tl
 citations_t1~~yr1_1
 '
@@ -376,64 +410,65 @@ summary(sem1.updates5g <- sem(submodels1.updates5g, dat, estimator="mlm"), stand
 ### Compare models with paths removed
 sem1.mlm <- sem(submodels, dat, estimator="mlm") 
 ## lrtest
-anova(sem1.mlm,sem1.updates1,sem1.updates2a,sem1.updates2b,sem1.updates3a,sem1.updates4a,sem1.updates4b,sem1.updates4c,sem1.updates4d,sem1.updates4e,sem1.updates5a,sem1.updates5b,sem1.updates5c,sem1.updates5d,sem1.updates5e,sem1.updates5f,sem1.updates5g)
+# anova(sem1.mlm,sem1.updates1,sem1.updates2a,sem1.updates2b,sem1.updates3a,sem1.updates4a,sem1.updates4b,sem1.updates4e,sem1.updates5a,sem1.updates5b,sem1.updates5c,sem1.updates5d,sem1.updates5e,sem1.updates5f,sem1.updates5g)
+anova(sem1.mlm,sem1.updates1,sem1.updates2a,sem1.updates2b,sem1.updates3a,sem1.updates4a,sem1.updates4b,sem1.updates4e,sem1.updates5c,sem1.updates5e,sem1.updates5f,sem1.updates5g)
 
 ## AIC
-x <- as.data.frame(AIC(sem1.mlm,sem1.updates1,sem1.updates2a,sem1.updates2b,sem1.updates3a,sem1.updates4a,sem1.updates4b,sem1.updates4c,sem1.updates4d,sem1.updates4e,sem1.updates5a,sem1.updates5b,sem1.updates5c,sem1.updates5d,sem1.updates5e,sem1.updates5f,sem1.updates5g))
+x <- as.data.frame(AIC(sem1.mlm,sem1.updates1,sem1.updates2a,sem1.updates2b,sem1.updates3a,sem1.updates4a,sem1.updates4b,sem1.updates4e,sem1.updates5c,sem1.updates5e,sem1.updates5f,sem1.updates5g))
 x[order(x$AIC),] 
-## sem1.updates5e AIC -1496.243 with delta AIC of nearly 2.
-## removes density_europe_t1 & density_europe_t2 
+## sem1.updates4a AIC -2938.619 with delta AIC of ~1
+## removes yr1_2 from submodel 4 
 ## sem1.updates5d is next best, which removes just density_europe_t2 
 
 ### Test some combinations of dropped variables
-## density_europe_t2 & density_europe_t2 (submodel 5) & yr1_2 (submodel 4)
+## density_europe_t2 & density_europe_t2 (submodel 5e) & yr1_2 (submodel 4a)
 submodels1.updates6a <- '
 yr1_1 ~ rsEURm2_t1
 rsUSAm2_t1 ~ rsEURm2_t1 + rsEURm2_t2 + yr1_1 + woody
-density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1*citations_t1 + rsEURm2_t1*woody + citations_t1*woody
-en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1*density_europe_t1 + yr1_1*woody
-expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + woody + woody*rsEURm2_t1
+density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1:citations_t1 + citations_t1:woody
+en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1:density_europe_t1 + yr1_1:woody
+expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + woody + woody:rsEURm2_t1
 citations_t2~~expansion_tl
 citations_t1~~yr1_1
 '
 summary(sem1.updates6a <- sem(submodels1.updates6a, dat, estimator="mlm"), standardized=T, rsq=T) 
 
-## density_europe_t2 & density_europe_t2 (submodel 5) & yr1_1 and yr1_2 and interactions  (submodel 4)
-submodels1.updates6b <- '
-yr1_1 ~ rsEURm2_t1
-rsUSAm2_t1 ~ rsEURm2_t1 + rsEURm2_t2 + yr1_1 + woody
-density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1*citations_t1 + rsEURm2_t1*woody + citations_t1*woody
-en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1*density_europe_t1
-expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + woody + woody*rsEURm2_t1
-citations_t2~~expansion_tl
-citations_t1~~yr1_1
-'
-summary(sem1.updates6b <- sem(submodels1.updates6b, dat, estimator="mlm"), standardized=T, rsq=T) 
+# ## density_europe_t2 & density_europe_t2 (submodel 5) & yr1_1 and yr1_2 and interactions  (submodel 4)
+# submodels1.updates6b <- '
+# yr1_1 ~ rsEURm2_t1
+# rsUSAm2_t1 ~ rsEURm2_t1 + rsEURm2_t2 + yr1_1 + woody
+# density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1:citations_t1 + citations_t1:woody
+# en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1:density_europe_t1
+# expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + woody + woody:rsEURm2_t1
+# citations_t2~~expansion_tl
+# citations_t1~~yr1_1
+# '
+# summary(sem1.updates6b <- sem(submodels1.updates6b, dat, estimator="mlm"), standardized=T, rsq=T) 
 
-## density_europe_t2 & density_europe_t2 & woody & interactions(submodel 5) & yr1_1 and yr1_2 and interactions (submodel 4)
-submodels1.updates6c <- '
-yr1_1 ~ rsEURm2_t1
-rsUSAm2_t1 ~ rsEURm2_t1 + rsEURm2_t2 + yr1_1 + woody
-density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1*citations_t1 + rsEURm2_t1*woody + citations_t1*woody
-en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1*density_europe_t1
-expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1
-citations_t2~~expansion_tl
-citations_t1~~yr1_1
-'
-summary(sem1.updates6c <- sem(submodels1.updates6c, dat, estimator="mlm"), standardized=T, rsq=T) 
+# ## density_europe_t2 & density_europe_t2 & woody & interactions(submodel 5) & yr1_1 and yr1_2 and interactions (submodel 4)
+# submodels1.updates6c <- '
+# yr1_1 ~ rsEURm2_t1
+# rsUSAm2_t1 ~ rsEURm2_t1 + rsEURm2_t2 + yr1_1 + woody
+# density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + woody + rsEURm2_t1:citations_t1 + citations_t1:woody
+# en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + woody +  rsUSAm2_t1:density_europe_t1
+# expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1
+# citations_t2~~expansion_tl
+# citations_t1~~yr1_1
+# '
+# summary(sem1.updates6c <- sem(submodels1.updates6c, dat, estimator="mlm"), standardized=T, rsq=T) 
 
-xx <- as.data.frame(AIC(sem1.updates6a,sem1.updates6b,sem1.updates6c, sem1.mlm,sem1.updates1,sem1.updates2a,sem1.updates2b,sem1.updates3a,sem1.updates4a,sem1.updates4b,sem1.updates4c,sem1.updates4d,sem1.updates4e,sem1.updates5a,sem1.updates5b,sem1.updates5c,sem1.updates5d,sem1.updates5e,sem1.updates5f,sem1.updates5g))
-xx[order(xx$AIC),] ## 5e still better
+xx <- as.data.frame(AIC(sem1.updates6a,sem1.mlm,sem1.updates1,sem1.updates2a,sem1.updates2b,sem1.updates3a,sem1.updates4a,sem1.updates4b,sem1.updates4e,sem1.updates5c,sem1.updates5e,sem1.updates5f,sem1.updates5g))
+xx[order(xx$AIC),] ## 4a still better
 
 ##### Compare fit with MLM and bollerstine #####
-summary(sem1.updates5e.bs <- sem(submodels1.updates5e, dat, test="bollen.stine", se="boot"), standardized=T, rsq=T) 
+summary(sem1.updates4a.bs <- sem(submodels1.updates4a, dat, test="bollen.stine", se="boot"), standardized=T, rsq=T) 
 
-# write.csv(parameterEstimates(sem1.updates5e), file="semparams1_updates5e_mlm.csv", row.names=F) ## converted this and below to semparams1_5e_mlm_vs_bollerstine.xls
-# write.csv(parameterEstimates(sem1.updates5e.bs), file="semparams1_updates5e_bs.csv", row.names=F) ## converted this and above to semparams1_5e_mlm_vs_bollerstine.xls
+# write.csv(parameterEstimates(sem1.updates4a), file="semparams1_updates4a_mlm.csv", row.names=F) 
+# write.csv(parameterEstimates(sem1.updates4a.bs), file="semparams1_updates4a_bs.csv", row.names=F) 
 
 ## Use standardizedSolution rather than parameterEstimates to obtain SEs and test statistics for standardized estimates
-write.csv(standardizedsolution(sem1.updates5e), file="semparams1_updates5e_mlmS.csv", row.names=F) ## converted this and below to semparams1_5e_mlm_vs_bollerstine.xls
-write.csv(standardizedsolution(sem1.updates5e.bs), file="semparams1_updates5e_bsS.csv", row.names=F) ## converted this and above to semparams1_5e_mlm_vs_bollerstine.xls
+write.csv(standardizedsolution(sem1.updates4a), file="semparams1_updates4a_mlmS.csv", row.names=F) 
+write.csv(standardizedsolution(sem1.updates4a.bs), file="semparams1_updates4a_bsS.csv", row.names=F) 
 
 ### Model nesting: http://web.pdx.edu/~newsomj/semclass/ho_nested.pdf
 ## A nested model is a model that uses the same variables (and cases!) as another model but
@@ -455,7 +490,7 @@ submodels1e.cov <- '
 yr1_1 ~ rsEURm2_t1
 rsUSAm2_t1 ~ rsEURm2_t1 + rsEURm2_t2 + yr1_1 + growthTree + growthShrub
 density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + growthTree + growthShrub
-en_rel_t1 ~ yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + growthTree + growthShrub + rsUSAm2_t1*density_europe_t1
+en_rel_t1 ~ yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + growthTree + growthShrub + rsUSAm2_t1:density_europe_t1
 expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + rsUSAm2_t1 + en_rel_t1 + growthTree + growthShrub
 citations_t2~~expansion_tl
 citations_t1~~yr1_1
@@ -476,7 +511,7 @@ submodels1e.cov1 <- '
 yr1_1 ~ rsEURm2_t1
 rsUSAm2_t1 ~ rsEURm2_t1 + rsEURm2_t2 + yr1_1 + growthTree + growthShrub
 density_europe_t1 ~ rsEURm2_t1 + rsEURm2_t2 + citations_t1 + citations_t2 + growthTree + growthShrub
-en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + growthTree + growthShrub + rsUSAm2_t1*density_europe_t1
+en_rel_t1 ~ rsUSAm2_t1 + rsUSAm2_t2 + yr1_1 + yr1_2 + density_europe_t1 + density_europe_t2 + citations_t1 + citations_t2 + growthTree + growthShrub + rsUSAm2_t1:density_europe_t1
 expansion_tl ~ rsEURm2_t1 + rsEURm2_t2 + growthTree + growthShrub
 citations_t2~~expansion_tl
 citations_t1~~yr1_1
